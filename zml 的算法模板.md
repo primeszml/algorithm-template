@@ -33,59 +33,171 @@ signed main() {
 
 ### 多项式相关
 
-#### 常见级数
-
-![image-20240825173137052](C:\Users\zml\AppData\Roaming\Typora\typora-user-images\image-20240825173137052.png)
-
 #### FFT
 
 ```c++
-const double pi = acos(-1);
-int get_num(int x) // 返回第一个大于等于 x 的 2 的幂。
-{
-    int res = 1;
-    while (res < x) res *= 2;
-    return res;
+#include<bits/stdc++.h>
+#define int long long
+using namespace std;
+
+const int N = 4e5 + 100;
+#define PI acos(-1)
+int re[N];
+vector<int> up(1,1);
+int get_up(int x){
+    while(up.size() < x + 1) up.push_back(up.back() >= up.size()? up.back() : up.back() * 2);
+    return up[x];
 }
-void FFT(vector<complex<double>> &a,int n,int op) // 循坏迭代法 FFT
-{
+void FFT(vector<complex<double>> &a,int op){
     // 蝴蝶变换
-    vector<int> re(n,0);
-    for (int i = 1; i < n; i++) re[i] = re[i / 2] / 2 + (i & 1) * (n / 2);
-    for (int i = 0; i < n; i++) if (i < re[i]) swap(a[re[i]], a[i]);
+    int n = a.size();
+    for(int i=1;i<n;i++) re[i] = (re[i>>1] >> 1) + (i & 1) * (n >> 1);
+    for(int i=0;i<n;i++) if(i < re[i]) swap(a[re[i]],a[i]);
     // 开始 FFT
-    for (int len = 2; len <= n; len *= 2) //, 枚举块长
-    {
-        for (int i = 0; i < n; i += len) // 枚举块数，块的起点
-        {
-            complex<double> wk = {1, 0}, w1 = {cos(2 * pi / len), op * sin(2 * pi / len)};
-            for (int j = 0; j < len / 2; j++) { // 枚举块内位置
-                auto x = a[i + j], y = a[i + j + len / 2] * wk;
-                a[i + j] = x + y, a[i + j + len / 2] = x - y;
+    for(int len = 2; len <= n; len *= 2){
+        complex<double> w1(cos(2*PI/len),op * sin(2*PI/len));
+        for(int i=0;i<n;i+=len){
+            complex<double> wk(1,0);
+            for(int j=0;j<len/2;j++){
+                complex<double> x = a[i + j], y = (wk * a[i + j + len/2]);
+                a[i+j] = x + y, a[i + j + len / 2] = x - y;
                 wk = wk * w1;
             }
         }
     }
-}
-struct polynomial_complex {
-    int n{}; // n 为 最高次 +1，也就是项数
-    vector<complex<double>> a;
-    void exlen(int len){ // 扩展长度到 len
-        while(a.size() < len) a.push_back({0,0});
+    if(op == -1){
+        for(int i=0;i<n;i++) a[i] /= n;
     }
-    polynomial_complex operator*(polynomial_complex B) {
-        polynomial_complex res;
-        int sn = get_num(n + B.n - 1);
-        res.exlen(sn); exlen(sn); B.exlen(sn);
-        FFT(a, sn, 1);
-        FFT(B.a, sn, 1);
-        for (int i = 0; i < sn; i++) a[i] = a[i] * B.a[i];
-        FFT(a, sn, -1);
-        res.n = n + B.n - 1;
-        for (int i = 0; i < res.n; i++) res.a[i].real((a[i].real() + 0.5) / sn);
+}
+
+struct poly_complex{
+    vector<complex<double>> a;
+    poly_complex() {}
+    poly_complex(complex<double> a1) {
+        a = {a1};
+    }
+    poly_complex(const vector<complex<double>> &a1){a = a1;}
+    int size(){return a.size();}
+    complex<double> operator[](int idx) const {
+        if (idx < 0 || idx >= a.size())return {0,0};
+        return a[idx];
+    }
+    poly_complex modxk(int k) const { // mod x^k
+        k = min(k, (int) a.size());
+        return poly_complex(vector<complex<double>>(a.begin(), a.begin() + k));
+    }
+    poly_complex divxk(int k) const { // 除 x ^ k
+        if (a.size() <= k)return poly_complex();
+        return poly_complex(vector<complex<double>>(a.begin() + k, a.end()));
+    }
+    friend poly_complex operator+(const poly_complex a, const poly_complex &b) {
+        vector<complex<double>> res(max(a.a.size(), b.a.size()));
+        for (int i = 0; i < (int)(res.size()); ++i) {
+            res[i] = a[i] + b[i];
+        }
+        return poly_complex(res);
+    }
+    friend poly_complex operator-(const poly_complex a, const poly_complex &b) {
+        vector<complex<double>> res(max(a.a.size(), b.a.size()));
+        for (int i = 0; i < (int)(res.size()); ++i) {
+            res[i] = a[i] - b[i];
+        }
+        return poly_complex(res);
+    }
+    friend poly_complex operator*(poly_complex a, poly_complex b) {
+        int sz = a.size() + b.size() - 1;
+        sz = get_up(sz);
+        a.a.resize(sz);
+        b.a.resize(sz);
+        FFT(a.a,1), FFT(b.a,1);
+        for (int i = 0; i < sz; ++i)a.a[i] = a[i] * b[i];
+        FFT(a.a,-1);
+        return poly_complex(a.a);
+    }
+    poly_complex &operator+=(poly_complex b) {return (*this) = (*this) + b;}
+    poly_complex &operator-=(poly_complex b) {return (*this) = (*this) - b;}
+    poly_complex &operator*=(poly_complex b) {return (*this) = (*this) * b;}
+    poly_complex deriv() const { // 求导
+        if (a.empty())return poly_complex();
+        vector<complex<double>> res(a.size() - 1);
+        for (int i = 0; i < a.size() - 1; ++i)res[i] = a[i + 1] * complex<double>(i+1,0);
+        return poly_complex(res);
+    }
+    poly_complex integr() const { // 积分
+        if (a.empty())return poly_complex();
+        vector<complex<double>> res(a.size() + 1);
+        for (int i = 0; i < a.size(); ++i)res[i + 1] = a[i] * complex<double>(1.0/(i+1),0);
+        return poly_complex(res);
+    }
+    poly_complex inv(int m) const { //求逆
+        poly_complex x(complex<double>(1,0) / a[0]);
+        int k = 1;
+        while (k < m) {
+            k *= 2;
+            x = (x * (poly_complex((2)) - modxk(k) * x)).modxk(k);
+        }
+        return x.modxk(m);
+    }
+    poly_complex log(int m) const {return (deriv() * inv(m)).integr().modxk(m);} // 对数
+    poly_complex exp(int m) const { // 指数
+        poly_complex x(1);
+        int k = 1;
+        while (k < m) {
+            k *= 2;
+            x = (x * (poly_complex(1) - x.log(k) + modxk(k))).modxk(k);
+        }
+        return x.modxk(m);
+    }
+    complex<double> val(double x){
+        complex<double> res(0,0), temp(1,0);
+        for(auto v : a){
+            res = res + v * temp;
+            temp = temp * x;
+        }
         return res;
     }
+    void print(){
+        for(auto v : a) cout << v.real() << ' ';
+        cout << '\n';
+    }
 };
+
+void solve(){
+    int la,lb,lc;
+    double l,r;
+    cin >> la >> lb >> lc >> l >> r;
+    vector<complex<double>> a(la+1),b(lb+1),c(lc+1);
+    for(int i=0;i<=la;i++) {
+        double val; cin >> val; a[i] = val;
+    }
+    for(int i=0;i<=lb;i++) {
+        double val; cin >> val; b[i] = val;
+    }
+    for(int i=0;i<=lc;i++) {
+        double val; cin >> val; c[i] = val;
+    }
+    poly_complex A(a),B(b),C(c);
+    A = A * A, B = B * B, C = C * C;
+    vector<complex<double>> f(max(A.size(),B.size()),C.size());
+    for(int i=0;i<f.size();i++) f[i] = C[i] - A[i] - B[i];
+    poly_complex F(f);
+    poly_complex G = F.deriv();
+    long double x0 = (l + r) / 2;
+    while(x0 >= l && x0 <= r){
+        long double x = x0 - (F.val(x0) / G.val(x0)).real();
+        if(abs(x - x0) < 1e-8) {
+            x0 = x;
+            break;
+        }
+        x0 = x;
+    }
+    if(x0 > l && x0 < r) printf("%.12Lf\n",x0);
+    else cout << "Inconsistent!\n";
+}
+
+signed main(){
+    solve();
+}
 ```
 
 #### NTT
@@ -245,196 +357,217 @@ signed main(){
 ##### 高度封装版
 
 ```c++
-#include <bits/stdc++.h>
+#include<bits/stdc++.h>
+#define int long long
 using namespace std;
-constexpr int P = 998244353;
-std::vector<int> rev, roots{0, 1};
-int power(int a, int b) {
+
+const int N = 3e5 + 100;
+const int mod = 998244353, mod2 = 167772161, mod3 = 469762049, mod4 = 1004535809; // NTT 常用模数
+const int g = 3; // 上面四个模数的原根
+
+vector<int> rev;
+int qmi(int a, int b){
     int res = 1;
-    for (; b; b >>= 1, a = 1ll * a * a % P)
-        if (b & 1)
-            res = 1ll * res * a % P;
+    while (b) {
+        if (b & 1) res = res * a % mod;
+        a = a * a % mod;
+        b = b >> 1;
+    }
     return res;
 }
-void dft(std::vector<int> &a) {
+int gi = qmi(g, mod - 2);
+void NTT(vector<int> &a, int op) {
     int n = a.size();
-    if (int(rev.size()) != n) {
-        int k = __builtin_ctz(n) - 1;
+    if (rev.size() != n) {
         rev.resize(n);
-        for (int i = 0; i < n; ++i) rev[i] = rev[i >> 1] >> 1 | (i & 1) << k;
+        for (int i = 1; i < n; i++) rev[i] = rev[i / 2] / 2 + (i & 1) * (n / 2);
     }
-    for (int i = 0; i < n; ++i)if (rev[i] < i)std::swap(a[i], a[rev[i]]);
-    if (int(roots.size()) < n) {
-        int k = __builtin_ctz(roots.size());
-        roots.resize(n);
-        while ((1 << k) < n) {
-            int e = power(3, (P - 1) >> (k + 1));
-            for (int i = 1 << (k - 1); i < (1 << k); ++i)
-                roots[2 * i] = roots[i], roots[2 * i + 1] = 1ll * roots[i] * e % P;
-            ++k;
-        }
-    }
-    for (int k = 1; k < n; k *= 2) {
-        for (int i = 0; i < n; i += 2 * k) {
-            for (int j = 0; j < k; ++j) {
-                int u = a[i + j], v = 1ll * a[i + j + k] * roots[k + j] % P, x = u + v;
-                if (x >= P) x -= P;
-                a[i + j] = x, x = u - v;
-                if (x < 0)x += P;
-                a[i + j + k] = x;
+    for (int i = 0; i < n; i++) if (rev[i] < i) swap(a[rev[i]], a[i]);
+    for (int len = 2; len <= n; len *= 2) {
+        int g1 = qmi((op == 1 ? g : gi), (mod - 1) / len);
+        for (int i = 0; i < n; i += len) {
+            int gk = 1;
+            for (int j = 0; j < len / 2; j++) {
+                int x = a[i + j], y = a[i + j + len / 2] * gk % mod;
+                a[i + j] = (x + y) % mod, a[i + j + len / 2] = (x + mod - y) % mod;
+                gk = gk * g1 % mod;
             }
         }
     }
+    if (op == -1) {
+        int inv = qmi(n, mod - 2);
+        for (int i = 0; i < n; i++) a[i] = a[i] * inv % mod;
+    }
 }
-void idft(std::vector<int> &a) {
-    int n = a.size();
-    std::reverse(a.begin() + 1, a.end());
-    dft(a);
-    int inv = power(n, P - 2);
-    for (int i = 0; i < n; ++i)
-        a[i] = 1ll * a[i] * inv % P;
-}
-struct Poly {
-    std::vector<int> a;
-    Poly() {}
-    Poly(int a0) {if (a0)a = {a0};}
-    Poly(const std::vector<int> &a1) : a(a1) {while (!a.empty() && !a.back())a.pop_back();}
-    int size() const {return a.size();}
-    int operator[](int idx) const {if (idx < 0 || idx >= size())return 0;return a[idx];}
-    Poly modxk(int k) const {k = std::min(k, size());return Poly(std::vector<int>(a.begin(), a.begin() + k));}
-    Poly divxk(int k) const {
-        if (size() <= k)
-            return Poly();
-        return Poly(std::vector<int>(a.begin() + k, a.end()));
+struct poly {
+    vector<int> a;
+    poly() {}
+    poly(const std::vector<int> &a) : a(a) {} // 传vector构造
+    poly(const std::initializer_list<int> &a) : a(a) {}  // 列表构造
+    int size() const {
+        return a.size();
     }
-    friend Poly operator+(const Poly a, const Poly &b) {
-        std::vector<int> res(std::max(a.size(), b.size()));
-        for (int i = 0; i < int(res.size()); ++i) {
-            res[i] = a[i] + b[i];
-            if (res[i] >= P)
-                res[i] -= P;
+    void resz(int n) {
+        a.resize(n);
+    }
+    int operator[](int idx) const {
+        if (idx < size()) {
+            return a[idx];
+        } else return 0;
+    }
+    int &operator[](int idx) {
+        return a[idx];
+    }
+    poly mulxk(int k) { // 返回乘上 x ^ k 的结果，自身值不变
+        auto b = a;
+        b.insert(b.begin(), k, 0); // 在 b 开头插入 k 个 0 即可
+        return poly(b);
+    }
+    poly modxk(int k) const { // 返回对 x^k 取模的结果，自身值不变
+        k = min(k, size());
+        return poly(vector<int>(a.begin(), a.begin() + k));
+    }
+    poly divxk(int k) const { // 返回除以 x ^ k 的结果，自身值不变
+        if (k >= size()) {
+            return poly();
         }
-        return Poly(res);
+        return vector<int>(a.begin() + k, a.end());
     }
-    friend Poly operator-(const Poly a, const Poly &b) {
-        std::vector<int> res(std::max(a.size(), b.size()));
-        for (int i = 0; i < int(res.size()); ++i) {
-            res[i] = a[i] - b[i];
-            if (res[i] < 0)res[i] += P;
+    friend poly operator+(const poly &a, const poly &b) { // 两个多项式相加，只返回结果，不改变 a,b 的值
+        vector<int> res(max(a.size(), b.size()));
+        for (int i = 0; i < res.size(); i++) {
+            res[i] = (a[i] + b[i]) % mod;
         }
-        return Poly(res);
+        return poly(res);
     }
-    friend Poly operator*(Poly a, Poly b) {
+    friend poly operator-(const poly &a, const poly &b) { // 两个多项式相-，只返回结果，不改变 a,b 的值
+        vector<int> res(max(a.size(), b.size()));
+        for (int i = 0; i < res.size(); i++) {
+            res[i] = (a[i] - b[i] + mod) % mod;
+        }
+        return poly(res);
+    }
+    friend poly operator*(poly a, poly b) { // 返回 a * b 的结果
+        if (a.size() == 0 || b.size() == 0) {
+            return poly();
+        }
         int sz = 1, tot = a.size() + b.size() - 1;
-        while (sz < tot)sz *= 2;
-        a.a.resize(sz);
-        b.a.resize(sz);
-        dft(a.a);
-        dft(b.a);
-        for (int i = 0; i < sz; ++i)a.a[i] = 1ll * a[i] * b[i] % P;
-        idft(a.a);
-        return Poly(a.a);
+        while (sz < tot) sz *= 2;
+        a.a.resize(sz), b.a.resize(sz);
+        NTT(a.a, 1), NTT(b.a, 1);
+        for (int i = 0; i < sz; i++) a[i] = (a[i] * b[i]) % mod;
+        NTT(a.a, -1);
+        a.a.resize(tot);
+        return a;
     }
-    Poly &operator+=(Poly b) {return (*this) = (*this) + b;}
-    Poly &operator-=(Poly b) {return (*this) = (*this) - b;}
-    Poly &operator*=(Poly b) {return (*this) = (*this) * b;}
-    Poly deriv() const {
-        if (a.empty())return Poly();
-        std::vector<int> res(size() - 1);
-        for (int i = 0; i < size() - 1; ++i)res[i] = 1ll * (i + 1) * a[i + 1] % P;
-        return Poly(res);
+    friend poly operator*(int a, poly b) {
+        for (int i = 0; i < (b.size()); i++) {
+            b[i] = a * b[i] % mod;
+        }
+        return b;
     }
-    Poly integr() const {
-        if (a.empty())return Poly();
+    friend poly operator*(poly a, int b) {
+        for (int i = 0; i < (a.size()); i++) {
+            a[i] = a[i] * b % mod;
+        }
+        return a;
+    }
+    poly &operator+=(poly b) {
+        return (*this) = (*this) + b;
+    }
+    poly &operator-=(poly b) {
+        return (*this) = (*this) - b;
+    }
+    poly &operator*=(poly b) {
+        return (*this) = (*this) * b;
+    }
+    poly &operator*=(int b) {
+        return (*this) = (*this) * b;
+    }
+    poly deriv() const { // 求导
+        if (a.empty()) {
+            return poly();
+        }
+        vector<int> res(size() - 1);
+        for (int i = 0; i < size() - 1; ++i) {
+            res[i] = (i + 1) * a[i + 1] % mod;
+        }
+        return poly(res);
+    }
+    poly integr() const { // 不定积分
         std::vector<int> res(size() + 1);
-        for (int i = 0; i < size(); ++i)res[i + 1] = 1ll * a[i] * power(i + 1, P - 2) % P;
-        return Poly(res);
+        for (int i = 0; i < size(); ++i) {
+            res[i + 1] = a[i] * qmi(i + 1, mod - 2) % mod;
+        }
+        return poly(res);
     }
-    Poly inv(int m) const {
-        Poly x(power(a[0], P - 2));
+    poly inv(int m) const {
+        int inv = qmi(a[0], mod - 2);
+        poly x{inv};
         int k = 1;
         while (k < m) {
             k *= 2;
-            x = (x * (2 - modxk(k) * x)).modxk(k);
+            x = (x * (poly{2} - modxk(k) * x)).modxk(k);
         }
         return x.modxk(m);
     }
-    Poly log(int m) const {return (deriv() * inv(m)).integr().modxk(m);}
-    Poly exp(int m) const {
-        Poly x(1);
+    poly log(int m) const {
+        return (deriv() * inv(m)).integr().modxk(m);
+    }
+    poly exp(int m) const {
+        poly x{1};
         int k = 1;
         while (k < m) {
             k *= 2;
-            x = (x * (1 - x.log(k) + modxk(k))).modxk(k);
+            x = (x * (poly{1} - x.log(k) + modxk(k))).modxk(k);
         }
         return x.modxk(m);
     }
-    Poly mulT(Poly b) const {
-        if (b.size() == 0)return Poly();
-        int n = b.size();
-        std::reverse(b.a.begin(), b.a.end());
-        return ((*this) * b).divxk(n - 1);
+    poly pow(int k,int k1,string str, int m) const {
+        // k 是 原始数 % mod, k1 是原始数 % phi（mod），即 mod - 1。str 是原始数
+        int i = 0;
+        while (i < size() && a[i] == 0) {
+            i++;
+        }
+        if (i == size() || 1LL * i * k >= m) {
+            return poly(std::vector<int>(m));
+        }
+        if(i && (str.size()>7)){
+            return poly(std::vector<int>(m));
+        }
+        int v = a[i];
+        auto f = divxk(i) * qmi(v, mod - 2);
+        return (f.log(m - i * k) * k).exp(m - i * k).mulxk(i * k) * qmi(v, k1);
     }
-    std::vector<int> eval(std::vector<int> x) const {
-        if (size() == 0)
-            return std::vector<int>(x.size(), 0);
-        const int n = std::max(int(x.size()), size());
-        std::vector<Poly> q(4 * n);
-        std::vector<int> ans(x.size());
-        x.resize(n);
-        std::function<void(int, int, int)> build = [&](int p, int l, int r) {
-            if (r - l == 1) {
-                q[p] = std::vector<int>{1, (P - x[l]) % P};
-            } else {
-                int m = (l + r) / 2;
-                build(2 * p, l, m);
-                build(2 * p + 1, m, r);
-                q[p] = q[2 * p] * q[2 * p + 1];
-            }
-        };
-        build(1, 0, n);
-        std::function<void(int, int, int, const Poly &)> work = [&](int p, int l, int r, const Poly &num) {
-            if (r - l == 1) {
-                if (l < int(ans.size()))
-                    ans[l] = num[0];
-            } else {
-                int m = (l + r) / 2;
-                work(2 * p, l, m, num.mulT(q[2 * p + 1]).modxk(m - l));
-                work(2 * p + 1, m, r, num.mulT(q[2 * p]).modxk(r - m));
-            }
-        };
-        work(1, 0, n, mulT(q[1].inv(n)));
-        return ans;
+    poly sqrt(int m) const {
+        poly x{1};
+        int k = 1;
+        while (k < m) {
+            k *= 2;
+            x = (x + (modxk(k) * x.inv(k)).modxk(k)) * ((mod + 1) / 2);
+        }
+        return x.modxk(m);
     }
 };
-int main() {
-    std::ios::sync_with_stdio(false);
-    std::cin.tie(nullptr);
-    int n, m;
-    std::cin >> n >> m;
-    std::vector<int> a(n + 1);
-    for (int i = 0; i <= n; ++i)
-        std::cin >> a[i];
-    std::vector<int> b(m);
-    for (int i = 0; i < m; ++i)
-        std::cin >> b[i];
-    b = Poly(a).eval(b);
-    for (int i = 0; i < m; ++i)
-        std::cout << b[i] << "\n";
-    return 0;
+
+signed main(){
+    ios::sync_with_stdio(0);cin.tie(0);cout.tie(0);
+    string str;
+    int n,k=0,k1=0;
+    cin >> n;
+    vector<int> a(n);
+    for(int i=0;i<n;i++) cin >> a[i];
+    poly f(a);
+    auto ans = f.inv(n);
+    for(int i=0;i<n;i++) cout << ans[i] << ' ';
 }
 ```
 
-##### 散装板
+##### 散装板（仅整理公式）
 
 ```
+
 ```
-
-
-
-### 生成函数相关
-
-
 
 ### 线性基
 
@@ -478,7 +611,7 @@ struct Prefix_linear_basis {
         if(res == x) return true;
         else return false;
     }
-    void fomot() {
+    void fomot() { // 求 k-th 前先用这个
         for (int i = 0; i <= 31; i++) {
             for (int j = i + 1; j <= 31; j++) {
                 if (Base[j] >> i & 1) Base[j] ^= Base[i];
@@ -663,4 +796,316 @@ matrix<n, n> qmi(matrix<n, n> A, int b) {
 
 
 #### 线段树套矩阵
+
+```c++
+//
+// Created by zml on 2024/8/2.
+//
+#include<bits/stdc++.h>
+#define int long long
+using namespace std;
+const int N = 2e5 + 10, mod = 998244353;
+template<int n, int m>
+struct matrix {
+    int a[n + 1][m + 1] = {};
+    template<int _n>
+    matrix operator*(const matrix<m, _n> &B) const {
+        matrix res;
+        for (int i = 1; i <= n; ++i) {
+            for (int j = 1; j <= m; ++j) {
+                int sum = 0;
+                for (int k = 1; k <= m; ++k) {
+                    sum = (sum + a[i][k] * B.a[k][j]) % mod;
+                }
+                res.a[i][j] = sum;
+            }
+        }
+        return res;
+    }
+    matrix operator+(const matrix<n, m> &B) const {
+        matrix res;
+        for (int i = 1; i <= n; ++i) {
+            for (int j = 1; j <= m; ++j) {
+                res.a[i][j] = (a[i][j] + B.a[i][j]) % mod;
+            }
+        }
+        return res;
+    }
+    void to_one() {
+        for (int i = 1; i <= n; ++i)
+            for (int j = 1; j <= m; ++j)
+                a[i][j] = (i == j ? 1 : 0);
+    }
+};
+matrix<3, 3> qmi(matrix<3, 3> A, int b) {
+    matrix<3, 3> res;
+    res.to_one();
+    while (b) {
+        if (b & 1) res = res * A;
+        b = b >> 1;
+        A = A * A;
+    }
+    return res;
+}
+template<class Node, class Tag, int N>
+struct SegmentTree {
+#define mid ((l+r)/2)
+    Node node[(N + 1) << 2];
+    Tag tag[(N + 1) << 2];
+    int n;
+    void init(int _n) {
+        n=_n;
+        for (int i = 1; i <= 4 * n; i++)node[i] = Node();
+        for (int i = 1; i <= 4 * n; i++)tag[i] = Tag();
+    }
+    void apply(int p, const Tag &v) {
+        tag[p] += v;
+        node[p] += v;
+    }
+    void pushdown(int p) {
+        if(tag[p] == Tag()){
+            return ;
+        }
+        apply(2 * p, tag[p]);
+        apply(2 * p + 1, tag[p]);
+        tag[p] = Tag();
+    }
+    void pushup(int p) {
+        node[p] = node[2 * p] + node[2 * p + 1];
+    }
+    void updata(int p, int l, int r, int x, int y,const Tag &v) {
+        if (l >= x && r <= y) return apply(p,v);
+        pushdown(p);
+        if (x <= mid)updata(2 * p, l, mid, x, y, v);
+        else updata(2 * p + 1, mid + 1, r, x, y, v);
+        pushup(p);
+    }
+    void updata(int l,int r,const Tag&v){
+        updata(1,1,n,l,r,v);
+    }
+    Node query(int p,int l,int r,int ql,int qr){
+        if(l >= ql && r <= qr) return node[p];
+        if(l > qr || r < ql) return Node();
+        pushdown(p);
+        return query(p*2,l,mid,ql,qr) + query(p*2+1,mid+1,r,ql,qr);
+    }
+};
+struct Tag {
+    matrix<3,3> mul;
+    Tag() {mul.to_one();}
+    void operator+=(const Tag &v) {
+        mul = v.mul;
+    }
+    bool operator==(const Tag &v){
+        for(int i=1;i<=2;i++){
+            for(int j=1;j<=2;j++){
+                if(mul.a[i][j] != v.mul.a[i][j]) return false;
+            }
+        }
+        return true;
+    }
+};
+struct Node {
+    matrix<3,3> sum,suml,sumr,ss;
+    Node(){
+        
+    }
+    void operator+=(const Tag &v) {
+        sum = v.mul, suml = v.mul, sumr = v.mul, ss = v.mul;
+    }
+    friend Node operator+(const Node &a, const Node &b) {
+        Node res;
+        res.sum = a.sum + b.sum;
+        res.sum = res.sum + (a.sumr * b.suml);
+        res.suml = a.suml + a.ss * b.suml;
+        res.sumr = b.sumr + b.ss * a.sumr;
+        res.ss = a.ss * b.ss;
+        return res;
+    }
+};
+SegmentTree<Node, Tag, N + 1> seg;
+
+signed main() {
+    ios::sync_with_stdio(0);cin.tie(0);cout.tie(0);
+    matrix<3,3> Base,I;
+    matrix<3,1> _0;
+    _0.a[1][1] = 1, _0.a[2][1] = 1, _0.a[3][1] = 0;
+    Base.a[1][1] = 2, Base.a[1][2] = 2, Base.a[1][3] = mod-1;
+    Base.a[2][1] = 1, Base.a[2][2] = 0, Base.a[2][3] = 0;
+    Base.a[3][1] = 0, Base.a[3][2] = 1, Base.a[3][3] = 0;
+    I.to_one();
+    int n,m;
+    cin >> n >> m;
+    seg.init(n);
+    for(int i=1;i<=n;i++){
+        int x;
+        cin >> x;
+        Tag temp;
+        temp.mul = I + qmi(Base,x);
+        seg.updata(i,i,temp);
+    }
+    while(m--){
+        int op,l,r;
+        cin >> op >> l >> r;
+        if(op == 1){
+            Tag temp;
+            temp.mul = I + qmi(Base,r);
+            seg.updata(l,l,temp);
+        }
+        else{
+            Node it = seg.query(1,1,n,l,r);
+            cout << (it.sum.a[3][1] + it.sum.a[3][2]) % mod << '\n';
+        }
+    }
+}
+
+
+```
+
+### 同余相关
+
+#### exbsgs
+
+```c++
+#include<algorithm>
+#include<unordered_map>
+#include<cmath>
+#include<iostream>
+#define int long long
+using namespace std;
+const int inf = -1e9;
+
+int exgcd(int a,int b,int &x,int &y)
+{
+    if(b==0)
+    {
+        x=1,y=0;
+        return a;
+    }
+    int d = exgcd(b,a%b,y,x);
+    y -= a/b * x;
+    return d;
+}
+
+int bsgs(int a, int b, int p)
+{
+    if (1 % p == b % p) return 0;
+    int k = (int)sqrt(p) + 1;
+    unordered_map<int, int> hash;
+    for (int i = 0, j = b % p; i < k; i ++ )
+    {
+        hash[j] = i;
+        j = j * a % p;
+    }
+    int ak = 1;
+    for (int i = 0; i < k; i ++ ) ak =ak * a % p;
+
+    for (int i = 1, j = ak; i <= k; i ++ )
+    {
+        if (hash.count(j)) return i * k - hash[j];
+        j = j * ak % p;
+    }
+    return inf;
+}
+
+int exbsgs(int a,int b,int p)
+{
+    b = (b % p + p) % p;
+    if (1 % p == b % p)return 0;
+    int d = __gcd(a, p);
+    if (d > 1)
+    {
+        if (b % d)return inf;
+        b /= d, p /= d;
+        int x, y;
+        int t = exgcd(a / d, p, x, y);
+        x = (x % (p / t) + p / t) % (p / t);
+        return exbsgs(a, b * x, p) + 1;
+    }
+    else return bsgs(a, b, p);
+}
+
+signed main() {
+    int a, b, p;
+    while (cin >> a >> p >> b, a || b || p)
+    {
+        int res = exbsgs(a, b, p);
+        if (res < 0)cout << "No Solution\n";
+        else cout << res << "\n";
+    }
+}
+```
+
+
+
+### 组合相关
+
+#### 卡特兰数——反射容斥
+
+问题：从 $(0,0)$ 出发，每次只能向上或向右走一个单位，且不经过直线 $A:y = x + c_1$ 和 $B:y = x + c_2$，到达 $(n,m)$ 的方案数（$(n,m)$ 在直线 $A$、$B$ 之间）。
+
+不考虑 $A、B$ 的限制，则答案为 $C_{n+m}^n$。
+
+考虑如何减去不合法的方案：不合法的方案必然经过 $A$ 或 $B$，我们按照第一次经过的直线分成 $A$、$B$ 两类。
+
+我们记
+
+- $f(x,y)$：从 $(0,0)$ 出发，第一次经过的直线是 $A$，到达 $(x,y)$ 的方案数。这里的 $(x,y)$ 和 $(0,0)$ 在 $A$ 的两侧。
+- $g(x,y)$：从 $(0,0)$ 出发，第一次经过的直线是 $B$，到达$(x,y)$ 的方案数。这里的 $(x,y)$ 和 $(0,0)$ 在 $B$ 的两侧。
+
+任意一条经过 $A$ 的路径，将其首次经过 $A$ 后的部分沿直线 $A$ 轴对称，都是一条从 $(0,0)$ 到达 $(y-c_1,x+c_1)$ 的路径，反过来也成立。
+
+任意一条经过 $B$ 的路径，将其首次经过 $B$ 后的部分沿直线 $B$ 轴对称，都是一条从 $(0,0)$ 到达 $(y-c_2,x+c_2)$ 的路径，反过来也成立。                                                                                                                                                                                                                                                                           
+
+任意一条先经过 $A$ 的路径沿 $A$ 对称后，也先经过 $A$。$B$ 同理。
+
+那么有：
+
+- $f(x,y) = C_{x+y}^{x} - g(y-c_2,x+c_2)$ 。
+- $g(x,y) = C_{x+y}^c - f(y-c_1,x+c_1)$。
+
+$f(x,y)$ 和 $g(x,y)$ 可以在 $O(x+y)$ 的时间内递归求出。
+
+例题：https://www.luogu.com.cn/problem/P3266
+
+`ac_code`:
+
+```c++
+//
+// Created by 35395 on 2024/10/23.
+//
+#include<bits/stdc++.h>
+using namespace std;
+#define int long long
+const int N = 3e6 + 100, mod = 1e9 + 7;
+int f[N], f_inv[N], inv[N];
+void init() {
+    inv[1] = f[0] = f_inv[0] = 1;
+    for (int i = 2; i < N; i++) inv[i] = 1ll * (mod - mod / i) * inv[mod % i] % mod;
+    for (int i = 1; i < N; i++) f[i] = 1ll * f[i - 1] * i % mod;
+    for (int i = 1; i < N; i++) f_inv[i] = 1ll * f_inv[i - 1] * inv[i] % mod;
+}
+int C(int a, int b) {
+    if (a < 0 || b < 0 || a < b) return 0;
+    return 1ll * f[a] * f_inv[b] % mod * f_inv[a - b] % mod;
+}
+int n, m, c1, c2;
+int G(int x, int y);
+int F(int x, int y);
+signed main() {
+    init();
+    cin >> n >> m;
+    c2 = -(m + 2);
+    c1 = 1;
+    cout << ((C(n + m + 1 + n, n) - F(n - c1, n + m + 1 + c1) - G(n - c2, n + m + 1 + c2)) % mod + mod) % mod << '\n';
+}
+int F(int x, int y) {
+    if (y < 0 || x < 0) return 0;
+    return C(x + y, x) - G(y - c2, x + c2);
+}
+int G(int x, int y) {
+    if (x < 0 || y < 0) return 0;
+    return C(x + y, x) - F(y - c1, x + c1);
+}
+```
 
